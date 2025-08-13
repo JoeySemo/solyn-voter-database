@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { supabaseServer } from '@/lib/supabaseServer';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     console.log('Fetching voters with params:', { page, pageSize, search, precinct, split, ward, township, targetVoter, party });
 
-    let query = supabase
+    let query = supabaseServer
       .from('Wentzville Voters')
       .select('*', { count: 'exact' });
 

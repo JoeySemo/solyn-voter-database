@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { supabaseServer } from '@/lib/supabaseServer';
 
 export async function GET() {
   try {
     console.log('Fetching filter data from Supabase...');
 
     // Fetch unique precincts
-    const { data: precinctData, error: precinctError } = await supabase
+    const { data: precinctData, error: precinctError } = await supabaseServer
       .from('Wentzville Voters')
       .select('Precinct');
       // Removed .not('Precinct', 'is', null) to include all precincts
@@ -17,7 +17,7 @@ export async function GET() {
     }
 
     // Fetch unique splits
-    const { data: splitData, error: splitError } = await supabase
+    const { data: splitData, error: splitError } = await supabaseServer
       .from('Wentzville Voters')
       .select('Split')
       .not('Split', 'is', null);
@@ -28,7 +28,7 @@ export async function GET() {
     }
 
     // Fetch unique wards
-    const { data: wardData, error: wardError } = await supabase
+    const { data: wardData, error: wardError } = await supabaseServer
       .from('Wentzville Voters')
       .select('Ward')
       .not('Ward', 'is', null);
@@ -39,7 +39,7 @@ export async function GET() {
     }
 
     // Fetch unique townships
-    const { data: townshipData, error: townshipError } = await supabase
+    const { data: townshipData, error: townshipError } = await supabaseServer
       .from('Wentzville Voters')
       .select('Township')
       .not('Township', 'is', null);
@@ -50,7 +50,7 @@ export async function GET() {
     }
 
     // Fetch unique political parties
-    const { data: partyData, error: partyError } = await supabase
+    const { data: partyData, error: partyError } = await supabaseServer
       .from('Wentzville Voters')
       .select('"Political Party"');
       // Removed .not('"Political Party"', 'is', null) to include all voters
