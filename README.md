@@ -109,18 +109,43 @@ solyn-app/
 2. Enable the "Directions API"
 3. Create an API key and add it to `.env.local`
 
-## 🚀 Deployment
+## 🚀 Deployment & Integration
 
-This project is configured for deployment on Vercel:
+This project is fully integrated with GitHub, Vercel, and custom domain (Solyn.org):
 
-1. **Connect to Vercel**
+### Quick Setup
+Run the automated integration script:
+```bash
+./setup-integrations.sh
+```
+
+### Manual Setup
+1. **GitHub Integration**
    - Push your code to GitHub
+   - Configure GitHub Actions workflows
+   - Add required secrets
+
+2. **Vercel Deployment**
    - Import the repository in Vercel
    - Add environment variables in Vercel dashboard
+   - Configure custom domain (Solyn.org)
 
-2. **Automatic Deployments**
-   - Every push to `main` triggers a production deployment
-   - Preview deployments are created for pull requests
+3. **Domain Configuration**
+   - Add DNS records for Solyn.org
+   - Configure SSL certificates
+   - Set up redirects
+
+### Automated Workflows
+- **Deployment**: Every push to `main` triggers production deployment
+- **Database Seeding**: Manual workflow for database updates
+- **Preview Deployments**: Created for pull requests
+
+### Access Your Application
+- **Production**: https://solyn.org
+- **GitHub**: https://github.com/YOUR_USERNAME/solyn-voter-database
+- **Vercel Dashboard**: https://vercel.com/dashboard
+
+For detailed setup instructions, see [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md).
 
 ## 🔒 Security & Privacy
 
