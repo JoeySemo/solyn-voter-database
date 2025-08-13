@@ -56,9 +56,5 @@
       "source": "/(.*)",
       "destination": "/$1"
     }
-  ],
-  "domains": [
-    "solyn.org",
-    "www.solyn.org"
   ]
 } 
