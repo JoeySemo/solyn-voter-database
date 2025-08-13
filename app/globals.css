@@ -91,5 +91,12 @@ body {
   body {
     @apply text-foreground;
     background-color: skyblue !important;
+    min-height: 100vh;
   }
+}
+
+/* Force sky blue background */
+html, body {
+  background-color: skyblue !important;
+  background: skyblue !important;
 }
