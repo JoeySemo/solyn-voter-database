@@ -219,7 +219,7 @@ export default function CanvassingPage() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={downloadCSV} className="flex items-center gap-2"><Download className="h-4 w-4" /> Download CSV</Button>
             <Button variant="outline" onClick={openPrintSheets} className="flex items-center gap-2">Print Route Sheets</Button>
-            <Button variant="outline" onClick={showMapPreview} disabled={isLoadingMap} className="flex items-center gap-2"><Map className="h-4 w-4" /> {isLoadingMap ? 'Loading Map...' : 'Preview Map'}</Button>
+            <Button variant="outline" onClick={showMapPreview} disabled={isLoadingMap} className="flex items-center gap-2"><Map className="h-4 w-4" /> {isLoadingMap ? 'Loading Map...' : 'Preview Map (Interactive)'} </Button>
           </div>
           {mapVisible && (
             <div>

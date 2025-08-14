@@ -6,9 +6,8 @@ export async function GET() {
     console.log('Fetching filter data from Supabase...');
 
     // Fetch each dimension independently, but do NOT fail the whole request on a single error.
-    const [precinctRes, splitRes, wardRes, townshipRes, partyRes] = await Promise.all([
+    const [precinctRes, wardRes, townshipRes, partyRes] = await Promise.all([
       supabaseServer.from('Wentzville Voters').select('Precinct'),
-      supabaseServer.from('Wentzville Voters').select('Split'),
       supabaseServer.from('Wentzville Voters').select('Ward'),
       supabaseServer.from('Wentzville Voters').select('Township'),
       supabaseServer.from('Wentzville Voters').select('"Political Party"')
@@ -16,9 +15,6 @@ export async function GET() {
 
     if (precinctRes.error) {
       console.warn('Precinct fetch warning:', precinctRes.error.message);
-    }
-    if (splitRes.error) {
-      console.warn('Split fetch warning:', splitRes.error.message);
     }
     if (wardRes.error) {
       console.warn('Ward fetch warning:', wardRes.error.message);
@@ -31,7 +27,6 @@ export async function GET() {
     }
 
     const precinctData = precinctRes.data || [];
-    const splitData = splitRes.data || [];
     const wardData = wardRes.data || [];
     const townshipData = townshipRes.data || [];
     const partyData = partyRes.data || [];
@@ -40,8 +35,7 @@ export async function GET() {
     const precincts = [...new Set(precinctData.map(item => item?.Precinct).filter(v => v !== null && v !== undefined))]
       .sort((a: any, b: any) => (a ?? '').toString().localeCompare((b ?? '').toString()));
 
-    const splits = [...new Set(splitData.map(item => item?.Split).filter(v => v !== null && v !== undefined))]
-      .sort((a: any, b: any) => (a ?? '').toString().localeCompare((b ?? '').toString()));
+    const splits: string[] = [];
 
     const wards = [...new Set(wardData.map(item => item?.Ward).filter(ward => typeof ward === 'string' ? ward.trim() !== '' : ward !== null && ward !== undefined))]
       .sort();
@@ -63,7 +57,7 @@ export async function GET() {
 
     return NextResponse.json({
       precincts: precincts.map(p => p?.toString?.() ?? ''),
-      splits: splits.map(s => s?.toString?.() ?? ''),
+      splits,
       wards,
       townships,
       parties
