@@ -262,6 +262,7 @@ export async function POST(request: NextRequest) {
           mapsLink,
           totalDistance: distanceInMiles,
           totalDuration: durationInMinutes,
+          overviewPolyline: data.routes?.[0]?.overview_polyline?.points || null,
           optimizationScore: distanceInMiles > 0.001 ? finalRoute.length / distanceInMiles : finalRoute.length * 1000, // Houses per mile, or high efficiency for very short distances
           efficiency: distanceInMiles > 0.001 ? finalRoute.length / distanceInMiles : finalRoute.length * 1000
         });

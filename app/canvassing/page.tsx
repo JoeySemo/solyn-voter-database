@@ -12,7 +12,7 @@ type FiltersResponse = { precincts: string[]; splits: string[]; wards: string[];
 export default function CanvassingPage() {
   const [filters, setFilters] = useState<FiltersResponse>({ precincts: [], splits: [], wards: [], townships: [], parties: [] })
   const [precinct, setPrecinct] = useState('all')
-  const [split, setSplit] = useState('all')
+  // Removed split filter per request
   const [ward, setWard] = useState('all')
   const [township, setTownship] = useState('all')
   const [party, setParty] = useState('all')
@@ -51,7 +51,7 @@ export default function CanvassingPage() {
       const res = await fetch('/api/canvass-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ search: '', precinct, split, ward, township, targetVoter, party, maxAddressesPerRoute: maxPerRoute, assignmentMinutes })
+        body: JSON.stringify({ search: '', precinct, ward, township, targetVoter, party, maxAddressesPerRoute: maxPerRoute, assignmentMinutes })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create plan')
@@ -192,9 +192,8 @@ export default function CanvassingPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <Select value={precinct} onValueChange={setPrecinct}><SelectTrigger><SelectValue placeholder="All Precincts" /></SelectTrigger><SelectContent><SelectItem value="all">All Precincts</SelectItem>{filters.precincts.map(p => (<SelectItem key={p} value={p}>{p}</SelectItem>))}</SelectContent></Select>
-            <Select value={split} onValueChange={setSplit}><SelectTrigger><SelectValue placeholder="All Splits" /></SelectTrigger><SelectContent><SelectItem value="all">All Splits</SelectItem>{filters.splits.map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent></Select>
             <Select value={ward} onValueChange={setWard}><SelectTrigger><SelectValue placeholder="All Wards" /></SelectTrigger><SelectContent><SelectItem value="all">All Wards</SelectItem>{filters.wards.map(w => (<SelectItem key={w} value={w}>{w}</SelectItem>))}</SelectContent></Select>
             <Select value={township} onValueChange={setTownship}><SelectTrigger><SelectValue placeholder="All Townships" /></SelectTrigger><SelectContent><SelectItem value="all">All Townships</SelectItem>{filters.townships.map(t => (<SelectItem key={t} value={t}>{t}</SelectItem>))}</SelectContent></Select>
             <Select value={targetVoter} onValueChange={setTargetVoter}><SelectTrigger><SelectValue placeholder="All Voters" /></SelectTrigger><SelectContent><SelectItem value="all">All Voters</SelectItem><SelectItem value="true">Target Voters</SelectItem><SelectItem value="false">Non-target</SelectItem></SelectContent></Select>
@@ -223,7 +222,10 @@ export default function CanvassingPage() {
             <Button variant="outline" onClick={showMapPreview} disabled={isLoadingMap} className="flex items-center gap-2"><Map className="h-4 w-4" /> {isLoadingMap ? 'Loading Map...' : 'Preview Map'}</Button>
           </div>
           {mapVisible && (
-            <div className="border rounded h-[400px]" ref={mapRef} />
+            <div>
+              <div className="border rounded h-[420px]" ref={mapRef} />
+              <div className="text-xs text-muted-foreground mt-2">Note: Map preview geocodes a subset of stops for responsiveness. Use “Open in Maps” per route for full navigation.</div>
+            </div>
           )}
               <div className="space-y-2">
                 {plan.canvasserAssignments.map((assignment: any, idx: number) => (
