@@ -65,10 +65,11 @@ export async function GET(request: NextRequest) {
 
     if (targetVoter === 'true') {
       console.log('Applying target voter filter: true');
-      query = query.eq('"is_target_voter"', true);
+      // Production dataset uses a Yes/No text column to indicate municipal voter status
+      query = query.eq('"Voted in at least 1 of the last 5 municipal elections"', 'Yes');
     } else if (targetVoter === 'false') {
       console.log('Applying target voter filter: false');
-      query = query.eq('"is_target_voter"', false);
+      query = query.eq('"Voted in at least 1 of the last 5 municipal elections"', 'No');
     }
 
     // Only apply party filter if it's a valid party that exists in the data
@@ -106,11 +107,15 @@ export async function GET(request: NextRequest) {
       const birthYear = voter["Birth Year"];
       const age = birthYear ? currentYear - birthYear : null;
       
+      const isTarget = (voter["Voted in at least 1 of the last 5 municipal elections"] || '').toString().toLowerCase() === 'yes';
+
       return {
         ...voter,
         "Age": age,
         // Fix party conversion to handle single spaces and null values properly
-        "Political Party": voter["Political Party"]?.trim() === "" || voter["Political Party"] === " " || !voter["Political Party"] ? "Unaffiliated" : voter["Political Party"]
+        "Political Party": voter["Political Party"]?.trim() === "" || voter["Political Party"] === " " || !voter["Political Party"] ? "Unaffiliated" : voter["Political Party"],
+        // Provide normalized boolean used by the client UI
+        "is_target_voter": isTarget
       };
     }) || [];
 

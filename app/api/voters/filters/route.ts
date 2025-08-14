@@ -50,9 +50,13 @@ export async function GET() {
       .sort();
 
     // Clean up party data and add "Unaffiliated" for empty/null values
+    // Sanitize parties: exclude dates or malformed entries, normalize blanks to Unaffiliated
     const parties = [...new Set((partyData as any[]).map(item => {
-      const party = (item?.['Political Party'] ?? '').toString().trim();
-      return party === '' ? 'Unaffiliated' : party;
+      const raw = (item?.['Political Party'] ?? '').toString().trim();
+      if (raw === '') return 'Unaffiliated';
+      // Filter out accidental date strings like 6/22/2015
+      if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(raw)) return 'Unaffiliated';
+      return raw;
     }))].sort();
 
     console.log(`Fetched filters: ${precincts.length} precincts, ${splits.length} splits, ${wards.length} wards, ${townships.length} townships, ${parties.length} parties`);
