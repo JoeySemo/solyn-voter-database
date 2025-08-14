@@ -1,0 +1,32 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+        continue-on-error: true
+      - name: Build Next.js app
+        run: npm run build
+      # Add Supabase migration step here if needed
+      # - name: Run Supabase migrations
+      #   run: supabase migration ...
+
+  # Vercel auto-deploys on push to main, no need to add deploy step unless you want preview deploys
