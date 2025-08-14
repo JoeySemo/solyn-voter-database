@@ -5,78 +5,61 @@ export async function GET() {
   try {
     console.log('Fetching filter data from Supabase...');
 
-    // Fetch unique precincts
-    const { data: precinctData, error: precinctError } = await supabaseServer
-      .from('Wentzville Voters')
-      .select('Precinct');
-      // Removed .not('Precinct', 'is', null) to include all precincts
+    // Fetch each dimension independently, but do NOT fail the whole request on a single error.
+    const [precinctRes, splitRes, wardRes, townshipRes, partyRes] = await Promise.all([
+      supabaseServer.from('Wentzville Voters').select('Precinct'),
+      supabaseServer.from('Wentzville Voters').select('Split'),
+      supabaseServer.from('Wentzville Voters').select('Ward'),
+      supabaseServer.from('Wentzville Voters').select('Township'),
+      supabaseServer.from('Wentzville Voters').select('"Political Party"')
+    ]);
 
-    if (precinctError) {
-      console.error('Error fetching precincts:', precinctError);
-      return NextResponse.json({ error: 'Failed to fetch precincts' }, { status: 500 });
+    if (precinctRes.error) {
+      console.warn('Precinct fetch warning:', precinctRes.error.message);
+    }
+    if (splitRes.error) {
+      console.warn('Split fetch warning:', splitRes.error.message);
+    }
+    if (wardRes.error) {
+      console.warn('Ward fetch warning:', wardRes.error.message);
+    }
+    if (townshipRes.error) {
+      console.warn('Township fetch warning:', townshipRes.error.message);
+    }
+    if (partyRes.error) {
+      console.warn('Party fetch warning:', partyRes.error.message);
     }
 
-    // Fetch unique splits
-    const { data: splitData, error: splitError } = await supabaseServer
-      .from('Wentzville Voters')
-      .select('Split')
-      .not('Split', 'is', null);
+    const precinctData = precinctRes.data || [];
+    const splitData = splitRes.data || [];
+    const wardData = wardRes.data || [];
+    const townshipData = townshipRes.data || [];
+    const partyData = partyRes.data || [];
 
-    if (splitError) {
-      console.error('Error fetching splits:', splitError);
-      return NextResponse.json({ error: 'Failed to fetch splits' }, { status: 500 });
-    }
+    // Extract unique values and sort them (robust against mixed types)
+    const precincts = [...new Set(precinctData.map(item => item?.Precinct).filter(v => v !== null && v !== undefined))]
+      .sort((a: any, b: any) => (a ?? '').toString().localeCompare((b ?? '').toString()));
 
-    // Fetch unique wards
-    const { data: wardData, error: wardError } = await supabaseServer
-      .from('Wentzville Voters')
-      .select('Ward')
-      .not('Ward', 'is', null);
+    const splits = [...new Set(splitData.map(item => item?.Split).filter(v => v !== null && v !== undefined))]
+      .sort((a: any, b: any) => (a ?? '').toString().localeCompare((b ?? '').toString()));
 
-    if (wardError) {
-      console.error('Error fetching wards:', wardError);
-      return NextResponse.json({ error: 'Failed to fetch wards' }, { status: 500 });
-    }
+    const wards = [...new Set(wardData.map(item => item?.Ward).filter(ward => typeof ward === 'string' ? ward.trim() !== '' : ward !== null && ward !== undefined))]
+      .sort();
 
-    // Fetch unique townships
-    const { data: townshipData, error: townshipError } = await supabaseServer
-      .from('Wentzville Voters')
-      .select('Township')
-      .not('Township', 'is', null);
+    const townships = [...new Set(townshipData.map(item => item?.Township).filter(township => typeof township === 'string' ? township.trim() !== '' : township !== null && township !== undefined))]
+      .sort();
 
-    if (townshipError) {
-      console.error('Error fetching townships:', townshipError);
-      return NextResponse.json({ error: 'Failed to fetch townships' }, { status: 500 });
-    }
-
-    // Fetch unique political parties
-    const { data: partyData, error: partyError } = await supabaseServer
-      .from('Wentzville Voters')
-      .select('"Political Party"');
-      // Removed .not('"Political Party"', 'is', null) to include all voters
-
-    if (partyError) {
-      console.error('Error fetching parties:', partyError);
-      return NextResponse.json({ error: 'Failed to fetch parties' }, { status: 500 });
-    }
-
-    // Extract unique values and sort them
-    const precincts = [...new Set(precinctData.map(item => item.Precinct))].sort((a, b) => a - b);
-    const splits = [...new Set(splitData.map(item => item.Split))].sort((a, b) => a - b);
-    const wards = [...new Set(wardData.map(item => item.Ward).filter(ward => ward && ward.trim() !== ''))].sort();
-    const townships = [...new Set(townshipData.map(item => item.Township).filter(township => township && township.trim() !== ''))].sort();
-    
     // Clean up party data and add "Unaffiliated" for empty/null values
-    const parties = [...new Set(partyData.map(item => {
-      const party = item['Political Party']?.trim();
-      return party === '' || !party ? 'Unaffiliated' : party;
+    const parties = [...new Set((partyData as any[]).map(item => {
+      const party = (item?.['Political Party'] ?? '').toString().trim();
+      return party === '' ? 'Unaffiliated' : party;
     }))].sort();
 
-    console.log(`Successfully fetched filters: ${precincts.length} precincts, ${splits.length} splits, ${wards.length} wards, ${townships.length} townships, ${parties.length} parties`);
+    console.log(`Fetched filters: ${precincts.length} precincts, ${splits.length} splits, ${wards.length} wards, ${townships.length} townships, ${parties.length} parties`);
 
     return NextResponse.json({
-      precincts: precincts.map(p => p.toString()),
-      splits: splits.map(s => s.toString()),
+      precincts: precincts.map(p => p?.toString?.() ?? ''),
+      splits: splits.map(s => s?.toString?.() ?? ''),
       wards,
       townships,
       parties
@@ -84,6 +67,13 @@ export async function GET() {
 
   } catch (error) {
     console.error('Unexpected error fetching filters:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    // Never fully fail; return safe empty lists so the UI still works
+    return NextResponse.json({
+      precincts: [],
+      splits: [],
+      wards: [],
+      townships: [],
+      parties: []
+    });
   }
-} // Force new deployment
+}
