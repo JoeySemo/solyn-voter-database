@@ -8,7 +8,8 @@ export function MainNav() {
   const pathname = usePathname()
 
   const navItems = [
-    { href: "/the-van", label: "Voter Database" },
+    { href: "/voter-database", label: "Voter Database" },
+    { href: "/canvassing", label: "Canvassing" },
   ]
 
   return (

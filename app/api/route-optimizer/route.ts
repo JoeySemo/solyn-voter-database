@@ -181,7 +181,7 @@ function calculateDistance(point1: { lat: number; lng: number }, point2: { lat: 
 
 export async function POST(request: NextRequest) {
   try {
-    const { addresses } = await request.json();
+    const { addresses, maxAddressesPerRoute: bodyMaxPerRoute, assignmentMinutes: bodyAssignmentMinutes } = await request.json();
     
     if (!addresses || addresses.length < 2) {
       return NextResponse.json({ 
@@ -197,8 +197,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Google Maps API allows max 10 waypoints per request
-    // So we can have: origin + 10 waypoints + destination = 12 total addresses per route
-    const maxAddressesPerRoute = 12;
+    // origin + 10 waypoints + destination = 12 total addresses per route
+    const maxAddressesPerRoute = Math.max(2, Math.min(Number(bodyMaxPerRoute) || 12, 12));
     
     // Find the optimal grouping of addresses into routes
     const routeGroups = await findOptimalRouteGrouping(addresses, maxAddressesPerRoute, apiKey);
@@ -303,7 +303,7 @@ export async function POST(request: NextRequest) {
     
     // Constants for time estimation
     const DOOR_TO_DOOR_TIME_PER_HOUSE = 3; // minutes per house (knock, talk, record)
-    const MAX_ASSIGNMENT_TIME = 60; // 1 hour in minutes
+    const MAX_ASSIGNMENT_TIME = Math.max(15, Math.min(Number(bodyAssignmentMinutes) || 60, 240));
     
     for (const route of allRoutes) {
       // Use only Google Maps walking time for assignment grouping
