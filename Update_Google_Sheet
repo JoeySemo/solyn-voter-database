@@ -1,0 +1,23 @@
+name: Update Google Sheet
+on: [push]
+
+jobs:
+  update-sheet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      - name: Update Google Sheet
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: python .github/scripts/update_sheet.py
