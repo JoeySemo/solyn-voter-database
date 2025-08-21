@@ -8,9 +8,40 @@ import { ThemeProvider } from "@/components/theme-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://solyn.com"),
   title: "Solyn - Voter Database",
   description: "Voter database with route optimization for canvassing.",
-  generator: 'v0.dev'
+  keywords: [
+    "voter database",
+    "canvassing",
+    "route optimization",
+    "volunteer coordination",
+  ],
+  authors: [{ name: "Solyn", url: "https://solyn.com" }],
+  robots: { index: true, follow: true },
+  openGraph: {
+    url: "https://solyn.com",
+    title: "Solyn - Voter Database",
+    description: "Voter database with route optimization for canvassing.",
+    siteName: "Solyn",
+    images: [
+      {
+        url: "/placeholder.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Neighborhood",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Solyn - Voter Database",
+    description: "Voter database with route optimization for canvassing.",
+    images: ["/placeholder.jpg"],
+    creator: "@solyn",
+  },
+  generator: "v0.dev",
 }
 
 export default function RootLayout({
@@ -20,11 +51,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="canonical" href="https://solyn.com" />
+      </head>
       <body className={inter.className}>
-        <ThemeProvider 
-          attribute="class" 
-          defaultTheme="system" 
-          enableSystem 
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col">
