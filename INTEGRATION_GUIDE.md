@@ -43,7 +43,7 @@ Go to: `https://github.com/YOUR_USERNAME/solyn-voter-database/settings/secrets/a
 Add these secrets:
 - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anonymous key
-- `GOOGLE_MAPS_API_KEY` - Your Google Maps API key
+- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` - Your Google Maps API key
 - `VERCEL_TOKEN` - Your Vercel API token
 - `VERCEL_ORG_ID` - Your Vercel organization ID
 - `VERCEL_PROJECT_ID` - Your Vercel project ID

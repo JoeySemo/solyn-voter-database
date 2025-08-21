@@ -66,7 +66,7 @@ Solyn provides a comprehensive suite of tools for Democratic Party organizers an
    ```env
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
    ```
 
 4. **Run the development server**
