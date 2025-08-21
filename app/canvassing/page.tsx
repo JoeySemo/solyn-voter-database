@@ -31,6 +31,7 @@ export default function CanvassingPage() {
       try {
         const res = await fetch('/api/voters/filters')
         const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to load filters')
         setFilters({
           precincts: data.precincts || [],
           splits: data.splits || [],
@@ -38,7 +39,10 @@ export default function CanvassingPage() {
           townships: data.townships || [],
           parties: data.parties || [],
         })
-      } catch {}
+      } catch (e: any) {
+        console.error('Error loading filters:', e)
+        setError(e.message || 'Failed to load filters')
+      }
     }
     load()
   }, [])

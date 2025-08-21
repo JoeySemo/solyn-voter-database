@@ -44,6 +44,7 @@ export default function VoterDatabasePage() {
   const [wards, setWards] = useState<string[]>([]);
   const [townships, setTownships] = useState<string[]>([]);
   const [parties, setParties] = useState<string[]>([]);
+  const [error, setError] = useState('');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizationError, setOptimizationError] = useState('');
   const [optimizationResults, setOptimizationResults] = useState<any>(null);
@@ -55,6 +56,7 @@ export default function VoterDatabasePage() {
 
   const fetchVoters = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -85,39 +87,41 @@ export default function VoterDatabasePage() {
       setVoters(data.voters || []);
       setTotalPages(data.totalPages || 1);
       setTotalVoters(data.totalVoters || 0);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching voters:', error);
       // Set safe defaults on error
       setVoters([]);
       setTotalPages(1);
       setTotalVoters(0);
+      setError(error?.message || 'Failed to load voters.');
     } finally {
       setLoading(false);
     }
   }, [currentPage, searchTerm, precinctFilter, splitFilter, wardFilter, townshipFilter, targetVoterFilter, partyFilter]);
 
   const fetchFilters = useCallback(async () => {
+    setError('');
     try {
       const response = await fetch('/api/voters/filters');
-      
+
       if (!response.ok) {
         throw new Error(`Filters API error: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Add error handling for unexpected response structure
       if (!data || typeof data !== 'object') {
         throw new Error('Invalid filters response format from API');
       }
-      
+
       // Ensure required fields exist with fallbacks
       setPrecincts(data.precincts || []);
       setSplits(data.splits || []);
       setWards(data.wards || []);
       setTownships(data.townships || []);
       setParties(data.parties || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching filters:', error);
       // Set safe defaults on error
       setPrecincts([]);
@@ -125,6 +129,7 @@ export default function VoterDatabasePage() {
       setWards([]);
       setTownships([]);
       setParties([]);
+      setError(error?.message || 'Failed to load filters.');
     }
   }, []);
 
@@ -241,6 +246,11 @@ export default function VoterDatabasePage() {
           <CardTitle className="text-2xl font-bold text-center">Voter Database</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {error && (
+            <div className="p-3 border border-red-200 bg-red-50 rounded text-sm text-red-700">
+              {error}
+            </div>
+          )}
           {/* Search Bar and Route Optimizer */}
           <div className="flex gap-2">
             <Input
