@@ -1,19 +1,21 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Server-side Supabase client. Uses the service role key when available
-// so that API routes can read data even if RLS policies are not yet configured.
-// Falls back to the public anon key when the service role key is not provided.
+// Server-side Supabase client requiring the service role key.
+// Ensures API routes can access data when RLS policies are not yet configured.
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  process.env.SUPABASE_URL ||
-  'https://cavysmnggzuubjyicptj.supabase.co'
+  process.env.SUPABASE_URL
 
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
-const keyToUse = supabaseServiceKey || supabaseAnonKey
+if (!supabaseUrl) {
+  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL')
+}
 
-export const supabaseServer = createClient(supabaseUrl, keyToUse)
+if (!supabaseServiceKey) {
+  throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+}
 
+export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey)
 
