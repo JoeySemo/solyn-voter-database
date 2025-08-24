@@ -141,7 +141,7 @@ Run the automated integration script:
 - **Preview Deployments**: Created for pull requests
 
 ### Access Your Application
-- **Production**: https://solyn.org
+- **Production**: https://solyn.com
 - **GitHub**: https://github.com/YOUR_USERNAME/solyn-voter-database
 - **Vercel Dashboard**: https://vercel.com/dashboard
 

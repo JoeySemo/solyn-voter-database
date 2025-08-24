@@ -76,8 +76,8 @@ Follow the prompts to:
 #### Add Domain in Vercel
 1. Go to your Vercel project dashboard
 2. Navigate to Settings → Domains
-3. Add `solyn.org`
-4. Add `www.solyn.org`
+3. Add `solyn.com`
+4. Add `www.solyn.com`
 
 #### Configure DNS Records
 In your domain registrar's DNS settings, add:
@@ -147,8 +147,8 @@ Monitor deployments at: `https://github.com/YOUR_USERNAME/solyn-voter-database/a
     }
   ],
   "domains": [
-    "solyn.org",
-    "www.solyn.org"
+    "solyn.com",
+    "www.solyn.com"
   ]
 }
 ```
@@ -227,11 +227,11 @@ vercel --prod
 - [ ] GitHub repository created and connected
 - [ ] GitHub Actions workflows configured
 - [ ] Vercel project deployed
-- [ ] Custom domain (solyn.org) configured
+- [ ] Custom domain (solyn.com) configured
 - [ ] DNS records updated
 - [ ] SSL certificate active
 - [ ] First deployment successful
-- [ ] Application accessible at https://solyn.org
+- [ ] Application accessible at https://solyn.com
 
 ## 📞 Support
 
