@@ -66,6 +66,7 @@ Solyn provides a comprehensive suite of tools for Democratic Party organizers an
    ```env
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
    GOOGLE_MAPS_API_KEY=your_google_maps_api_key
    ```
 
@@ -76,6 +77,41 @@ Solyn provides a comprehensive suite of tools for Democratic Party organizers an
 
 5. **Open your browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
+
+## 🧑‍💻 Environment Setup
+
+### Local development
+
+Create a `.env.local` file (or copy from `.env.example` if provided) and add your credentials:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+```
+
+### Vercel
+
+Set these same variables in your Vercel project using the dashboard or CLI:
+
+```bash
+vercel env add NEXT_PUBLIC_SUPABASE_URL
+vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
+vercel env add SUPABASE_SERVICE_ROLE_KEY
+```
+
+To pull the current values from Vercel into your local environment:
+
+```bash
+vercel env pull .env.local
+```
+
+### Rotating Supabase keys
+
+1. In the Supabase dashboard, go to **Project Settings → API** and rotate the anon and service role keys.
+2. Update the rotated keys in Vercel and run `vercel env pull .env.local` to refresh your local file.
+3. Redeploy the application so the new keys take effect.
 
 ## 📁 Project Structure
 
