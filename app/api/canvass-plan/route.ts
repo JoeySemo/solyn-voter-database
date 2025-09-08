@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabaseServer'
+import { dbUtils } from '../../../lib/database'
 
 type Filters = {
   search?: string
@@ -26,80 +26,34 @@ export async function POST(request: NextRequest) {
       pageSize = 1000
     } = (await request.json()) as Filters & { maxAddressesPerRoute?: number; assignmentMinutes?: number; pageSize?: number }
 
-    // Build base query function to apply filters consistently per page
-    const buildQuery = () => {
-      let q = supabaseServer.from('Wentzville Voters').select('*', { count: 'exact' })
+    // Get all voters matching the filters using SQLite
+    const result = dbUtils.getVoters({
+      page: 1,
+      pageSize: 20000, // Get all matching voters for canvass planning
+      search,
+      precinct: precinct === 'all' ? '' : precinct,
+      split: split === 'all' ? '' : split,
+      ward: ward === 'all' ? '' : ward,
+      township: township === 'all' ? '' : township,
+      targetVoter: targetVoter === 'all' ? '' : targetVoter,
+      party: party === 'all' ? '' : party
+    })
 
-      if (search) {
-        const asNumber = parseInt(search)
-        if (!Number.isNaN(asNumber)) {
-          q = q.eq('"Voter ID"', asNumber)
-        } else {
-          const terms = search.split(' ').filter(Boolean)
-          if (terms.length > 1) {
-            q = q.filter('"First Name"', 'ilike', `%${terms[0]}%`).filter('"Last Name"', 'ilike', `%${terms[1]}%`)
-          } else {
-            q = q.or(`"First Name".ilike.%${search}%.,"Last Name".ilike.%${search}%.,"Full Address".ilike.%${search}%.,"Political Party".ilike.%${search}%`)
-          }
-        }
-      }
+    const rows = result.voters || []
+    console.log(`Found ${rows.length} voters for canvass planning`)
 
-      if (precinct && precinct !== 'all') q = q.eq('Precinct', parseInt(precinct))
-      if (split && split !== 'all') q = q.eq('Split', parseInt(split))
-      if (ward && ward !== 'all') q = q.eq('Ward', ward)
-      if (township && township !== 'all') q = q.eq('Township', township)
-
-      if (targetVoter === 'true') {
-        q = q.eq('"Voted in at least 1 of the last 5 municipal elections"', 'Yes')
-      } else if (targetVoter === 'false') {
-        q = q.eq('"Voted in at least 1 of the last 5 municipal elections"', 'No')
-      }
-
-      if (party && party !== 'all') {
-        if (party === 'Unaffiliated') {
-          q = q.or('"Political Party".is.null,"Political Party".eq. ,"Political Party".eq. ,"Political Party".eq.Unaffiliated')
-        } else {
-          q = q.eq('"Political Party"', party)
-        }
-      }
-
-      return q.order('"Voter ID"', { ascending: true })
-    }
-
-    // Page through results and group by unique address
+    // Group by unique address
     const addressToResidents = new Map<string, { voters: { id: string; name: string; party: string }[] }>()
 
-    let page = 1
-    let totalFetched = 0
-    const MAX_FETCH = 20000 // safety guard: up to 20k rows
-
-    while (totalFetched < MAX_FETCH) {
-      const from = (page - 1) * pageSize
-      const to = from + pageSize - 1
-
-      const { data, error } = await buildQuery().range(from, to)
-      if (error) {
-        console.error('Supabase error (canvass-plan):', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-
-      const rows = data || []
-      if (rows.length === 0) break
-
-      for (const voter of rows) {
-        const address = (voter['Full Address'] || '').toString().trim()
-        if (!address) continue
-        const name = (voter['Full Name'] || '').toString().trim()
-        const rawParty = (voter['Political Party'] || '').toString().trim()
-        const partyNorm = rawParty === '' ? 'Unaffiliated' : /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(rawParty) ? 'Unaffiliated' : rawParty
-        const id = (voter['Voter ID'] || '').toString()
-        if (!addressToResidents.has(address)) addressToResidents.set(address, { voters: [] })
-        addressToResidents.get(address)!.voters.push({ id, name, party: partyNorm })
-      }
-
-      totalFetched += rows.length
-      page += 1
-      if (rows.length < pageSize) break
+    for (const voter of rows) {
+      const address = (voter['Full Address'] || '').toString().trim()
+      if (!address) continue
+      const name = (voter['Full Name'] || '').toString().trim()
+      const rawParty = (voter['Political Party'] || '').toString().trim()
+      const partyNorm = rawParty === '' ? 'Unaffiliated' : /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(rawParty) ? 'Unaffiliated' : rawParty
+      const id = (voter['Voter ID'] || '').toString()
+      if (!addressToResidents.has(address)) addressToResidents.set(address, { voters: [] })
+      addressToResidents.get(address)!.voters.push({ id, name, party: partyNorm })
     }
 
     const uniqueAddresses = Array.from(addressToResidents.keys())
@@ -107,16 +61,74 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not enough addresses to create a canvass plan.' }, { status: 400 })
     }
 
-    // Call our optimizer route
-    const optimizerUrl = new URL('/api/route-optimizer', request.url).toString()
-    const optimizerRes = await fetch(optimizerUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ addresses: uniqueAddresses, maxAddressesPerRoute, assignmentMinutes })
-    })
-    const optimizerData = await optimizerRes.json()
-    if (!optimizerRes.ok) {
-      return NextResponse.json({ error: optimizerData.error || 'Route optimization failed' }, { status: 500 })
+    // Simple geographic clustering based on address similarity
+    const maxAddressesPerRouteActual = Math.max(2, Math.min(Number(maxAddressesPerRoute) || 12, 12))
+    
+    // Group addresses by street name for better geographic clustering
+    const streetGroups = new Map<string, string[]>()
+    
+    for (const address of uniqueAddresses) {
+      // Extract street name (everything before the house number)
+      const streetMatch = address.match(/^\d+\s+(.+?)(?:\s+Dr|\s+Ct|\s+Way|\s+Ln|\s+St|\s+Ave|\s+Blvd|\s+Rd)/i)
+      if (streetMatch) {
+        const streetName = streetMatch[1].trim()
+        if (!streetGroups.has(streetName)) {
+          streetGroups.set(streetName, [])
+        }
+        streetGroups.get(streetName)!.push(address)
+      } else {
+        // Fallback for addresses that don't match the pattern
+        if (!streetGroups.has('Other')) {
+          streetGroups.set('Other', [])
+        }
+        streetGroups.get('Other')!.push(address)
+      }
+    }
+    
+    // Create routes by combining street groups
+    const routes: any[] = []
+    let routeNumber = 1
+    let currentRoute: string[] = []
+    
+    for (const [streetName, addresses] of streetGroups) {
+      // Sort addresses by house number for better order
+      const sortedAddresses = addresses.sort((a, b) => {
+        const numA = parseInt(a.match(/^(\d+)/)?.[1] || '0')
+        const numB = parseInt(b.match(/^(\d+)/)?.[1] || '0')
+        return numA - numB
+      })
+      
+      for (const address of sortedAddresses) {
+        if (currentRoute.length >= maxAddressesPerRouteActual) {
+          // Create route and start new one
+          routes.push({
+            routeNumber: routeNumber++,
+            addresses: [...currentRoute],
+            mapsLink: `https://www.google.com/maps/dir/${currentRoute.map(encodeURIComponent).join('/')}`,
+            totalDistance: currentRoute.length * 0.1, // Estimate 0.1 miles per address
+            totalDuration: currentRoute.length * 2, // Estimate 2 minutes per address
+            overviewPolyline: null,
+            optimizationScore: currentRoute.length,
+            efficiency: currentRoute.length
+          })
+          currentRoute = []
+        }
+        currentRoute.push(address)
+      }
+    }
+    
+    // Add the last route if it has addresses
+    if (currentRoute.length > 0) {
+      routes.push({
+        routeNumber: routeNumber,
+        addresses: currentRoute,
+        mapsLink: `https://www.google.com/maps/dir/${currentRoute.map(encodeURIComponent).join('/')}`,
+        totalDistance: currentRoute.length * 0.1, // Estimate 0.1 miles per address
+        totalDuration: currentRoute.length * 2, // Estimate 2 minutes per address
+        overviewPolyline: null,
+        optimizationScore: currentRoute.length,
+        efficiency: currentRoute.length
+      })
     }
 
     // Attach resident counts for each stop
@@ -125,9 +137,61 @@ export async function POST(request: NextRequest) {
       stopMeta[addr] = { householdSize: voters.length, voters }
     }
 
+    // Create canvasser assignments with proper time grouping
+    const canvasserAssignments: any[] = []
+    let currentAssignment: any = {
+      canvasserNumber: 1,
+      routes: [],
+      totalAddresses: 0,
+      totalDistance: 0,
+      totalDuration: 0,
+      estimatedTotalTime: 0
+    }
+    
+    const maxAssignmentTime = Math.max(15, Math.min(Number(assignmentMinutes) || 60, 240))
+    
+    for (const route of routes) {
+      // Check if adding this route would exceed the time limit
+      if (currentAssignment.estimatedTotalTime + route.totalDuration > maxAssignmentTime && currentAssignment.routes.length > 0) {
+        // Start a new canvasser assignment
+        canvasserAssignments.push(currentAssignment)
+        currentAssignment = {
+          canvasserNumber: currentAssignment.canvasserNumber + 1,
+          routes: [],
+          totalAddresses: 0,
+          totalDistance: 0,
+          totalDuration: 0,
+          estimatedTotalTime: 0
+        }
+      }
+      
+      // Add route to current assignment
+      currentAssignment.routes.push(route)
+      currentAssignment.totalAddresses += route.addresses.length
+      currentAssignment.totalDistance += route.totalDistance
+      currentAssignment.totalDuration += route.totalDuration
+      currentAssignment.estimatedTotalTime += route.totalDuration
+    }
+    
+    // Add the last assignment if it has routes
+    if (currentAssignment.routes.length > 0) {
+      canvasserAssignments.push(currentAssignment)
+    }
+
+    // Calculate totals
+    const totalDistance = canvasserAssignments.reduce((sum, assignment) => sum + assignment.totalDistance, 0)
+    const totalDuration = canvasserAssignments.reduce((sum, assignment) => sum + assignment.totalDuration, 0)
+
     return NextResponse.json({
-      ...optimizerData,
+      routes,
+      canvasserAssignments,
+      totalRoutes: routes.length,
+      totalCanvassers: canvasserAssignments.length,
+      totalAddresses: uniqueAddresses.length,
+      totalDistance: totalDistance,
+      totalDuration: totalDuration,
       stopMeta,
+      message: 'Basic route optimization enabled - Google Maps API key needed for full optimization'
     })
   } catch (e: any) {
     console.error('canvass-plan error', e)

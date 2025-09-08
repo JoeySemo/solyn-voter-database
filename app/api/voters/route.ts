@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { dbUtils } from '../../../lib/database';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,92 +16,21 @@ export async function GET(request: NextRequest) {
 
     console.log('Fetching voters with params:', { page, pageSize, search, precinct, split, ward, township, targetVoter, party });
 
-    let query = supabaseServer
-      .from('Wentzville Voters')
-      .select('*', { count: 'exact' });
-
-    // Apply filters
-    if (search) {
-      // Check if search is a number (for Voter ID)
-      const searchAsNumber = parseInt(search);
-      if (!isNaN(searchAsNumber)) {
-        // If search is a number, search by Voter ID
-        query = query.eq('"Voter ID"', searchAsNumber);
-      } else {
-        // If search is text, search by name, address, and party
-        // Split search terms to handle first/last name combinations
-        const searchTerms = search.split(' ').filter(term => term.length > 0);
-        
-        if (searchTerms.length > 1) {
-          // Multiple search terms - use a simpler approach
-          const firstName = searchTerms[0];
-          const lastName = searchTerms[1];
-          
-          // Search for voters with both first name AND last name matching
-          // Use a more reliable approach with Supabase
-          query = query.filter('"First Name"', 'ilike', `%${firstName}%`).filter('"Last Name"', 'ilike', `%${lastName}%`);
-        } else {
-          // Single search term
-          query = query.or(`"First Name".ilike.%${search}%,"Last Name".ilike.%${search}%,"Full Address".ilike.%${search}%,"Political Party".ilike.%${search}%`);
-        }
-      }
-    }
-
-    if (precinct && precinct !== 'all') {
-      query = query.eq('Precinct', parseInt(precinct));
-    }
-
-    if (split && split !== 'all') {
-      query = query.eq('Split', parseInt(split));
-    }
-
-    if (ward && ward !== 'all') {
-      query = query.eq('Ward', ward);
-    }
-
-    if (township && township !== 'all') {
-      query = query.eq('Township', township);
-    }
-
-    if (targetVoter === 'true') {
-      console.log('Applying target voter filter: true');
-      // Production dataset uses a Yes/No text column to indicate municipal voter status
-      query = query.eq('"Voted in at least 1 of the last 5 municipal elections"', 'Yes');
-    } else if (targetVoter === 'false') {
-      console.log('Applying target voter filter: false');
-      query = query.eq('"Voted in at least 1 of the last 5 municipal elections"', 'No');
-    }
-
-    // Only apply party filter if it's a valid party that exists in the data
-    if (party && party !== 'all') {
-      if (party === 'Unaffiliated') {
-        // For Unaffiliated, include null, single spaces, empty strings, and actual "Unaffiliated" values
-        query = query.or('"Political Party".is.null,"Political Party".eq. ,"Political Party".eq.,"Political Party".eq.Unaffiliated');
-      } else {
-        query = query.eq('"Political Party"', party);
-      }
-    }
-
-    // Apply pagination
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    
-    query = query
-      .order('"Voter ID"', { ascending: true })
-      .range(from, to);
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json({
-        success: false,
-        error: error.message
-      }, { status: 500 });
-    }
+    // Use SQLite database
+    const result = dbUtils.getVoters({
+      page,
+      pageSize,
+      search,
+      precinct,
+      split,
+      ward,
+      township,
+      targetVoter,
+      party
+    });
 
     // Clean up party data and calculate age
-    const cleanedData = data?.map(voter => {
+    const cleanedData = result.voters.map(voter => {
       // Calculate age from birth year
       const currentYear = new Date().getFullYear();
       const birthYear = voter["Birth Year"];
@@ -117,17 +46,14 @@ export async function GET(request: NextRequest) {
         // Provide normalized boolean used by the client UI
         "is_target_voter": isTarget
       };
-    }) || [];
+    });
 
-    const totalVoters = count || 0;
-    const totalPages = Math.ceil(totalVoters / pageSize);
-
-    console.log(`Successfully fetched ${cleanedData.length} voters (page ${page}, total count: ${totalVoters})`);
+    console.log(`Successfully fetched ${cleanedData.length} voters (page ${page}, total count: ${result.totalVoters})`);
 
     return NextResponse.json({
       voters: cleanedData,
-      totalPages,
-      totalVoters
+      totalPages: result.totalPages,
+      totalVoters: result.totalVoters
     });
 
   } catch (err) {

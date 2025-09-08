@@ -44,9 +44,11 @@ export default function VoterDatabasePage() {
   const [wards, setWards] = useState<string[]>([]);
   const [townships, setTownships] = useState<string[]>([]);
   const [parties, setParties] = useState<string[]>([]);
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [optimizationError, setOptimizationError] = useState('');
-  const [optimizationResults, setOptimizationResults] = useState<any>(null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [planError, setPlanError] = useState('');
+  const [plan, setPlan] = useState<any>(null);
+  const [maxAddressesPerRoute, setMaxAddressesPerRoute] = useState(12);
+  const [assignmentMinutes, setAssignmentMinutes] = useState(60);
 
   const pageSize = 100;
 
@@ -155,69 +157,111 @@ export default function VoterDatabasePage() {
     }
   };
 
-  const optimizeRoutes = async () => {
-    if (voters.length < 2) {
-      setOptimizationError('Need at least 2 voters to create a route.');
-      return;
-    }
-
-    setIsOptimizing(true);
-    setOptimizationError('');
-    setOptimizationResults(null); // Clear previous results
+  const generateCanvassPlan = async () => {
+    setIsGeneratingPlan(true);
+    setPlanError('');
+    setPlan(null);
 
     try {
-      // Extract addresses from current voters
-      const addresses = voters.map(voter => voter["Full Address"]).filter(addr => addr);
-      
-      if (addresses.length < 2) {
-        throw new Error('Couldn\'t find at least two valid addresses.');
-      }
-
-      // Call our server-side API route instead of Google Maps directly
-      const response = await fetch('/api/route-optimizer', {
+      const response = await fetch('/api/canvass-plan', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ addresses }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          search: searchTerm,
+          precinct: precinctFilter,
+          split: splitFilter,
+          ward: wardFilter,
+          township: townshipFilter,
+          targetVoter: targetVoterFilter,
+          party: partyFilter,
+          maxAddressesPerRoute,
+          assignmentMinutes
+        })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to optimize routes');
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      setOptimizationResults(data);
-
-      // Remove automatic opening of Google Maps tabs
-      // data.routes.forEach((route: any) => {
-      //   window.open(route.mapsLink, '_blank');
-      // });
-
-      // Create and download CSV with all routes
-      const csvHeader = 'Route,Stop,Address';
-      const csvRows: string[] = [];
-      
-      data.routes.forEach((route: any, routeIndex: number) => {
-        route.addresses.forEach((addr: string, addrIndex: number) => {
-          csvRows.push(`Route ${route.routeNumber},${addrIndex + 1},"${addr}"`);
-        });
-      });
-      
-      const csvContent = [csvHeader, ...csvRows].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `canvassing_routes_${data.totalRoutes}_routes.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+      setPlan(data);
 
     } catch (err: any) {
-      setOptimizationError(err.message || 'An error occurred while optimizing routes');
+      setPlanError(err.message || 'An error occurred while generating the canvass plan');
     } finally {
-      setIsOptimizing(false);
+      setIsGeneratingPlan(false);
+    }
+  };
+
+  const downloadCSV = () => {
+    if (!plan) return;
+    
+    const csvHeader = 'Canvasser,Route,Stop,Address,Household Size,Voters';
+    const csvRows: string[] = [];
+    
+    (plan.canvasserAssignments || []).forEach((assignment: any) => {
+      assignment.routes.forEach((route: any) => {
+        route.addresses.forEach((addr: string, idx: number) => {
+          const meta = plan.stopMeta?.[addr] || { householdSize: 1, voters: [] };
+          const voterNames = (meta.voters || []).map((v: any) => v.name).join('; ');
+          csvRows.push(`Canvasser ${assignment.canvasserNumber},Route ${route.routeNumber},${idx + 1},"${addr}",${meta.householdSize},"${voterNames}"`);
+        });
+      });
+    });
+    
+    const csvContent = [csvHeader, ...csvRows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'canvass_plan.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const openPrintSheets = () => {
+    if (!plan || !plan.canvasserAssignments) {
+      console.error('No plan or canvasser assignments available');
+      return;
+    }
+    const htmlParts: string[] = [];
+    htmlParts.push(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Canvass Route Sheets</title>
+      <style>
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; padding: 20px; }
+        h1 { font-size: 20px; margin-bottom: 6px; }
+        h2 { font-size: 16px; margin: 12px 0 6px; }
+        .assignment { page-break-inside: avoid; border: 1px solid #ddd; padding: 12px; margin-bottom: 16px; }
+        .route { border: 1px dashed #ccc; padding: 10px; margin: 10px 0; }
+        .stop { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+        .stop:last-child { border-bottom: none; }
+        .addr { font-weight: 600; }
+        .meta { color: #555; font-size: 12px; }
+        .voters { margin-left: 26px; font-size: 13px; }
+        .box { width: 18px; height: 18px; border: 1px solid #333; display: inline-block; margin-right: 6px; }
+        @media print { .noprint { display: none; } }
+      </style></head><body>`)
+    htmlParts.push(`<div class="noprint" style="margin-bottom:12px;"><button onclick="window.print()">Print</button></div>`)
+    htmlParts.push(`<h1>Canvassing Route Sheets</h1>`)
+
+    (plan.canvasserAssignments || []).forEach((assignment: any) => {
+      htmlParts.push(`<div class="assignment"><h2>Canvasser ${assignment.canvasserNumber} — ${assignment.totalAddresses} addresses • ${assignment.totalDistance ? assignment.totalDistance.toFixed(2) : '0.00'} miles • ${assignment.estimatedTotalTime} min</h2>`)
+      assignment.routes.forEach((route: any) => {
+        htmlParts.push(`<div class="route"><div class="meta">Route ${route.routeNumber} — ${route.addresses.length} stops • ${route.totalDistance ? route.totalDistance.toFixed(2) : '0.00'} miles • ${route.totalDuration} min</div>`)
+        route.addresses.forEach((addr: string, idx: number) => {
+          const meta = plan.stopMeta?.[addr] || { householdSize: 1, voters: [] }
+          const names = (meta.voters || []).map((v: any) => `${v.name}${v.party ? ' (' + v.party + ')' : ''}`).join('; ')
+          htmlParts.push(`<div class="stop"><span class="box"></span><div><div class="addr">${idx + 1}. ${addr}</div><div class="meta">Household: ${meta.householdSize}</div><div class="voters">${names}</div></div></div>`)
+        })
+        htmlParts.push(`</div>`)
+      })
+      htmlParts.push(`</div>`)
+    })
+
+    htmlParts.push(`</body></html>`)
+    const w = window.open('', '_blank')
+    if (w) {
+      w.document.write(htmlParts.join(''))
+      w.document.close()
     }
   };
 
@@ -235,13 +279,9 @@ export default function VoterDatabasePage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">Voter Database</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Search Bar and Route Optimizer */}
+    <div className="container mx-auto px-6 py-6 space-y-6">
+      <div className="space-y-4">
+          {/* Search Bar */}
           <div className="flex gap-2">
             <Input
               placeholder="Search by name, ID, address, or party..."
@@ -254,186 +294,53 @@ export default function VoterDatabasePage() {
               <Search className="h-4 w-4 mr-2" />
               Search
             </Button>
-            <Button 
-              onClick={optimizeRoutes} 
-              disabled={isOptimizing || voters.length < 2}
-              variant="outline"
-              className="px-6"
-            >
-              <Route className="h-4 w-4 mr-2" />
-              {isOptimizing ? 'Optimizing...' : 'Route Optimizer'}
-            </Button>
           </div>
 
-          {/* Route Optimization Error */}
-          {optimizationError && (
+          {/* Canvass Plan Error */}
+          {planError && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-red-800 text-sm">{optimizationError}</p>
+              <p className="text-red-800 text-sm">{planError}</p>
             </div>
           )}
 
-          {/* Optimization Results */}
-          {optimizationResults && optimizationResults.routes && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-              <h3 className="text-lg font-semibold mb-2">🎯 Geographic Route Optimization Complete!</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
-                <div>
-                  <span className="font-medium">Total Canvassers:</span> {optimizationResults.totalCanvassers || optimizationResults.totalRoutes}
-                </div>
-                <div>
-                  <span className="font-medium">Total Addresses:</span> {optimizationResults.totalAddresses}
-                </div>
-                <div>
-                  <span className="font-medium">Total Distance:</span> {optimizationResults.totalDistance < 0.01 ? '< 0.01' : optimizationResults.totalDistance.toFixed(2)} miles
-                </div>
-                <div>
-                  <span className="font-medium">Total Time:</span> {optimizationResults.totalDuration || 0} min
-                </div>
+          {/* Canvass Plan Results */}
+          {plan && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div><span className="font-medium">Canvassers:</span> {plan.totalCanvassers}</div>
+                <div><span className="font-medium">Routes:</span> {plan.totalRoutes}</div>
+                <div><span className="font-medium">Addresses:</span> {plan.totalAddresses}</div>
+                <div><span className="font-medium">Distance:</span> {plan.totalDistance ? plan.totalDistance.toFixed(2) : '0.00'} miles</div>
               </div>
-              
-              <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded">
-                <div className="text-sm space-y-1">
-                  <div>
-                    <span className="font-medium text-green-800">Overall Efficiency:</span> {optimizationResults.averageHousesPerMile?.toFixed(1) || '0.0'} houses per mile
-                  </div>
-                  <div>
-                    <span className="font-medium text-green-800">Average Route Distance:</span> {optimizationResults.averageDistancePerRoute < 0.01 ? '< 0.01' : optimizationResults.averageDistancePerRoute.toFixed(2)} miles
-                  </div>
-                  <div>
-                    <span className="font-medium text-green-800">Average Houses per Route:</span> {optimizationResults.averageHousesPerRoute?.toFixed(1) || '0.0'} houses
-                  </div>
-                </div>
-                <div className="text-xs text-green-700 mt-2">
-                  Routes are grouped by geographic proximity using K-means clustering and sorted by efficiency
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={downloadCSV} className="flex items-center gap-2">
+                  <Download className="h-4 w-4" /> Download CSV
+                </Button>
+                <Button variant="outline" onClick={openPrintSheets} className="flex items-center gap-2">
+                  Print Route Sheets
+                </Button>
               </div>
-              
-              <div className="mt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium">Routes Grouped by Canvasser Assignments:</h4>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => {
-                      const csvHeader = 'Canvasser,Route,Stop,Address,Distance (miles),Walking Time (min),Total Time (min)';
-                      const csvRows: string[] = [];
-                      
-                      (optimizationResults.canvasserAssignments || optimizationResults.routes).forEach((assignment: any) => {
-                        if (assignment.routes) {
-                          // Canvasser assignment format
-                          assignment.routes.forEach((route: any) => {
-                            route.addresses.forEach((addr: string, addrIndex: number) => {
-                              csvRows.push(`Canvasser ${assignment.canvasserNumber},Route ${route.routeNumber},${addrIndex + 1},"${addr}",${route.totalDistance},${route.totalDuration},${route.totalDuration}`);
-                            });
-                          });
-                        } else {
-                          // Individual route format (fallback)
-                          assignment.addresses.forEach((addr: string, addrIndex: number) => {
-                            csvRows.push(`Route ${assignment.routeNumber},${addrIndex + 1},"${addr}",${assignment.totalDistance},${assignment.totalDuration},${assignment.totalDuration}`);
-                          });
-                        }
-                      });
-                      
-                      const csvContent = [csvHeader, ...csvRows].join('\n');
-                      const blob = new Blob([csvContent], { type: 'text/csv' });
-                      const url = URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = `canvasser_assignments_${optimizationResults.totalCanvassers || optimizationResults.totalRoutes}_canvassers.csv`;
-                      link.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="flex items-center gap-1"
-                  >
-                    <Download className="h-3 w-3" />
-                    Download CSV
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {(optimizationResults.canvasserAssignments || optimizationResults.routes).map((assignment: any, index: number) => (
-                    <div key={index} className="p-4 bg-white rounded border">
-                      {assignment.routes ? (
-                        // Canvasser assignment format - show as grouped routes
-                        <div>
-                          <div className="flex items-center justify-between mb-3 pb-2 border-b">
-                            <div>
-                              <h5 className="font-semibold text-lg">Canvasser {assignment.canvasserNumber}</h5>
-                              <div className="text-sm text-gray-600">
-                                {assignment.totalAddresses} addresses • {assignment.totalDistance.toFixed(2)} miles • {assignment.estimatedTotalTime} min total
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm font-medium text-green-600">
-                                {assignment.routes.length} routes
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                ~1 hour shift
-                              </div>
-                            </div>
+              <div className="space-y-2">
+                {plan.canvasserAssignments.map((assignment: any, idx: number) => (
+                  <Card key={idx}>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Canvasser {assignment.canvasserNumber} • {assignment.totalAddresses} addresses • {assignment.totalDistance ? assignment.totalDistance.toFixed(2) : '0.00'} miles • {assignment.estimatedTotalTime} min</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {assignment.routes.map((route: any, rIdx: number) => (
+                        <div key={rIdx} className="flex items-center justify-between p-2 border rounded">
+                          <div className="text-sm">
+                            <span className="font-medium mr-2">Route {route.routeNumber}</span>
+                            {route.addresses.length} stops • {route.totalDistance ? route.totalDistance.toFixed(2) : '0.00'} miles • {route.totalDuration} min
                           </div>
-                          
-                          <div className="space-y-1">
-                            {assignment.routes.map((route: any, routeIndex: number) => (
-                              <div key={routeIndex} className="flex items-center justify-between p-2 bg-gray-50 rounded border text-xs">
-                                <div className="flex items-center gap-3">
-                                  <div>
-                                    <span className="font-medium">Route {route.routeNumber}:</span> {route.addresses.length} stops
-                                  </div>
-                                  <div className="text-gray-600">
-                                    {route.totalDistance < 0.01 ? '< 0.01' : route.totalDistance.toFixed(2)} miles • {route.totalDuration} min
-                                  </div>
-                                  <div className="text-green-600 font-medium">
-                                    {route.efficiency?.toFixed(1) || '0.0'} houses/mile
-                                  </div>
-                                </div>
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => window.open(route.mapsLink, '_blank')}
-                                  className="flex items-center gap-1 h-6 px-2 text-xs"
-                                >
-                                  <Map className="h-3 w-3" />
-                                  Open in Maps
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        // Individual route format (fallback)
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div>
-                              <span className="font-medium">Route {assignment.routeNumber}:</span> {assignment.addresses.length} stops
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              {assignment.totalDistance < 0.01 ? '< 0.01' : assignment.totalDistance.toFixed(2)} miles • {assignment.totalDuration} min
-                            </div>
-                            <div className="text-sm text-green-600 font-medium">
-                              {assignment.efficiency?.toFixed(1) || '0.0'} houses/mile
-                            </div>
-                          </div>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => window.open(assignment.mapsLink, '_blank')}
-                            className="flex items-center gap-1 ml-4"
-                          >
-                            <Map className="h-3 w-3" />
-                            Open in Maps
+                          <Button size="sm" variant="outline" onClick={() => window.open(route.mapsLink, '_blank')} className="flex items-center gap-1">
+                            <Map className="h-3 w-3"/>Open in Maps
                           </Button>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="mt-3 text-xs text-gray-600 space-y-1">
-                <p>🗺️ <strong>Geographic Optimization:</strong> Addresses are grouped using K-means clustering based on geographic coordinates to minimize total walking distance across all routes.</p>
-                <p>🎯 <strong>Route Optimization:</strong> Each route is further optimized by Google Maps to find the most efficient walking order within that geographic cluster.</p>
-                <p>👥 <strong>Canvasser Grouping:</strong> Routes are grouped into 1-hour assignments for efficient canvasser deployment and staffing planning.</p>
-                <p>📊 <strong>Efficiency Metrics:</strong> Each route shows houses per mile to help prioritize high-density areas.</p>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </div>
           )}
@@ -522,6 +429,48 @@ export default function VoterDatabasePage() {
             </Select>
           </div>
 
+          {/* Canvassing Controls */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <Route className="h-5 w-5" />
+              Create Canvass Plan
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Max addresses per route (≤ 12)</label>
+                <Input
+                  type="number"
+                  min="2"
+                  max="12"
+                  value={maxAddressesPerRoute}
+                  onChange={(e) => setMaxAddressesPerRoute(parseInt(e.target.value) || 12)}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Assignment minutes per canvasser</label>
+                <Input
+                  type="number"
+                  min="15"
+                  max="240"
+                  value={assignmentMinutes}
+                  onChange={(e) => setAssignmentMinutes(parseInt(e.target.value) || 60)}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  onClick={generateCanvassPlan}
+                  disabled={isGeneratingPlan}
+                  className="w-full"
+                >
+                  <Route className="h-4 w-4 mr-2" />
+                  {isGeneratingPlan ? 'Generating...' : 'Generate Plan'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           {/* Pagination - Moved below filters and above voter data */}
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
@@ -602,8 +551,7 @@ export default function VoterDatabasePage() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }
