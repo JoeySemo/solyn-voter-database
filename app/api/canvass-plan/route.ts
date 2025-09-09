@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
       estimatedTotalTime: 0
     }
     
-    const maxAssignmentTime = Math.max(15, Math.min(Number(assignmentMinutes) || 60, 240))
+    const maxAssignmentTime = Math.max(30, Math.min(Number(assignmentMinutes) || 60, 180))
     
     for (const route of routes) {
       // Check if adding this route would exceed the time limit

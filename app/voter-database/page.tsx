@@ -448,15 +448,20 @@ export default function VoterDatabasePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Assignment minutes per canvasser</label>
-                <Input
-                  type="number"
-                  min="15"
-                  max="240"
-                  value={assignmentMinutes}
-                  onChange={(e) => setAssignmentMinutes(parseInt(e.target.value) || 60)}
-                  className="w-full"
-                />
+                <label className="block text-sm font-medium mb-1">Assignment time per canvasser</label>
+                <Select value={assignmentMinutes.toString()} onValueChange={(value) => setAssignmentMinutes(parseInt(value))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select assignment time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30 minutes (0.5 hours)</SelectItem>
+                    <SelectItem value="60">60 minutes (1 hour)</SelectItem>
+                    <SelectItem value="90">90 minutes (1.5 hours)</SelectItem>
+                    <SelectItem value="120">120 minutes (2 hours)</SelectItem>
+                    <SelectItem value="150">150 minutes (2.5 hours)</SelectItem>
+                    <SelectItem value="180">180 minutes (3 hours)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-end">
                 <Button
