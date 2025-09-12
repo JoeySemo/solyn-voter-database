@@ -47,7 +47,6 @@ export default function VoterDatabasePage() {
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [planError, setPlanError] = useState('');
   const [plan, setPlan] = useState<any>(null);
-  const [maxAddressesPerRoute, setMaxAddressesPerRoute] = useState(12);
   const [assignmentMinutes, setAssignmentMinutes] = useState(60);
 
   const pageSize = 100;
@@ -174,7 +173,6 @@ export default function VoterDatabasePage() {
           township: townshipFilter,
           targetVoter: targetVoterFilter,
           party: partyFilter,
-          maxAddressesPerRoute,
           assignmentMinutes
         })
       });
@@ -435,18 +433,7 @@ export default function VoterDatabasePage() {
               <Route className="h-5 w-5" />
               Create Canvass Plan
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Max addresses per route (≤ 12)</label>
-                <Input
-                  type="number"
-                  min="2"
-                  max="12"
-                  value={maxAddressesPerRoute}
-                  onChange={(e) => setMaxAddressesPerRoute(parseInt(e.target.value) || 12)}
-                  className="w-full"
-                />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Assignment time per canvasser</label>
                 <Select value={assignmentMinutes.toString()} onValueChange={(value) => setAssignmentMinutes(parseInt(value))}>

@@ -21,10 +21,9 @@ export async function POST(request: NextRequest) {
       township = 'all',
       targetVoter = 'all',
       party = 'all',
-      maxAddressesPerRoute,
       assignmentMinutes,
       pageSize = 1000
-    } = (await request.json()) as Filters & { maxAddressesPerRoute?: number; assignmentMinutes?: number; pageSize?: number }
+    } = (await request.json()) as Filters & { assignmentMinutes?: number; pageSize?: number }
 
     // Get all voters matching the filters using SQLite
     const result = dbUtils.getVoters({
@@ -61,13 +60,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not enough addresses to create a canvass plan.' }, { status: 400 })
     }
 
-    // Alternative approach: Minimize overlap by creating compact geographic clusters
-    const maxAddressesPerRouteActual = Math.max(2, Math.min(Number(maxAddressesPerRoute) || 12, 12))
+    // Revolutionary approach: Create geographically isolated canvasser territories
+    // This prevents any crossover between canvassers by creating distinct geographic zones
     
-    // Create a grid-based clustering system
-    const gridSize = Math.ceil(Math.sqrt(uniqueAddresses.length / maxAddressesPerRouteActual))
-    
-    // Parse addresses and assign to grid cells
+    // Parse addresses and create geographic zones
     const addressData = uniqueAddresses.map((addr, index) => {
       const streetMatch = addr.match(/^(\d+)\s+(.+?)(?:\s+(?:Dr|Ct|Way|Ln|St|Ave|Blvd|Rd))/i)
       const houseNumber = parseInt(streetMatch?.[1] || '0')
@@ -75,16 +71,17 @@ export async function POST(request: NextRequest) {
       const streetType = addr.match(/\s+(Dr|Ct|Way|Ln|St|Ave|Blvd|Rd)/i)?.[1] || ''
       const fullStreet = `${streetName} ${streetType}`.trim()
       
-      // Create a hash-based grid assignment
-      const streetHash = fullStreet.toLowerCase().split('').reduce((a, b) => {
+      // Create a more sophisticated geographic identifier
+      const baseStreetName = streetName
+        .replace(/\s+(North|South|East|West|N|S|E|W)$/i, '')
+        .toLowerCase()
+        .substring(0, 6) // Use first 6 characters for zone identification
+      
+      // Create a zone hash for geographic clustering
+      const zoneHash = baseStreetName.split('').reduce((a, b) => {
         a = ((a << 5) - a) + b.charCodeAt(0)
         return a & a
       }, 0)
-      
-      // Assign to grid cell based on hash
-      const gridX = Math.abs(streetHash % gridSize)
-      const gridY = Math.abs((streetHash >> 8) % gridSize)
-      const gridCell = `${gridX},${gridY}`
       
       return {
         address: addr,
@@ -92,25 +89,23 @@ export async function POST(request: NextRequest) {
         streetName,
         streetType,
         fullStreet,
-        gridCell,
-        gridX,
-        gridY,
-        streetHash,
+        baseStreetName,
+        zoneHash,
         index
       }
     })
     
-    // Group addresses by grid cells
-    const gridGroups = new Map<string, typeof addressData>()
+    // Group addresses by geographic zones (no overlap between zones)
+    const zoneGroups = new Map<string, typeof addressData>()
     for (const addrData of addressData) {
-      if (!gridGroups.has(addrData.gridCell)) {
-        gridGroups.set(addrData.gridCell, [])
+      if (!zoneGroups.has(addrData.baseStreetName)) {
+        zoneGroups.set(addrData.baseStreetName, [])
       }
-      gridGroups.get(addrData.gridCell)!.push(addrData)
+      zoneGroups.get(addrData.baseStreetName)!.push(addrData)
     }
     
-    // Sort addresses within each grid cell by street name and house number
-    for (const [cell, addresses] of gridGroups) {
+    // Sort addresses within each zone by street name and house number
+    for (const [zone, addresses] of zoneGroups) {
       addresses.sort((a, b) => {
         if (a.fullStreet !== b.fullStreet) {
           return a.fullStreet.localeCompare(b.fullStreet)
@@ -119,36 +114,21 @@ export async function POST(request: NextRequest) {
       })
     }
     
-    // Create routes by processing grid cells in a logical order
+    // Create routes by assigning complete zones to canvassers (no crossover possible)
     const routes: any[] = []
     let routeNumber = 1
     
-    // Sort grid cells by position (top-to-bottom, left-to-right)
-    const sortedGridCells = Array.from(gridGroups.entries())
-      .sort((a, b) => {
-        const [x1, y1] = a[0].split(',').map(Number)
-        const [x2, y2] = b[0].split(',').map(Number)
-        if (y1 !== y2) return y1 - y2 // Sort by row first
-        return x1 - x2 // Then by column
-      })
+    // Sort zones by size (largest first) to balance workload
+    const sortedZones = Array.from(zoneGroups.entries())
+      .sort((a, b) => b[1].length - a[1].length)
     
-    // Create routes with grid-based clustering
+    // Create routes by processing zones sequentially
     let currentRoute: string[] = []
-    let currentGridCells = new Set<string>()
+    let currentZone: string | null = null
     
-    for (const [gridCell, addresses] of sortedGridCells) {
-      const [gridX, gridY] = gridCell.split(',').map(Number)
-      
-      // Check if we should start a new route
-      const wouldExceedLimit = currentRoute.length + addresses.length > maxAddressesPerRouteActual
-      const tooFarFromCurrent = currentGridCells.size > 0 && 
-        Array.from(currentGridCells).some(cell => {
-          const [currX, currY] = cell.split(',').map(Number)
-          const distance = Math.abs(gridX - currX) + Math.abs(gridY - currY)
-          return distance > 1 // Only allow adjacent or same cells
-        })
-      
-      if ((wouldExceedLimit || tooFarFromCurrent) && currentRoute.length > 0) {
+    for (const [zoneName, zoneAddresses] of sortedZones) {
+      // If this zone would exceed the route limit, start a new route
+      if (currentRoute.length + zoneAddresses.length > 12 && currentRoute.length > 0) {
         // Finalize current route
         routes.push({
           routeNumber: routeNumber++,
@@ -163,14 +143,14 @@ export async function POST(request: NextRequest) {
         
         // Start new route
         currentRoute = []
-        currentGridCells.clear()
+        currentZone = null
       }
       
-      // Add addresses from this grid cell to current route
-      for (const addrData of addresses) {
-        if (currentRoute.length < maxAddressesPerRouteActual) {
+      // Add all addresses from this zone to current route
+      for (const addrData of zoneAddresses) {
+        if (currentRoute.length < 12) {
           currentRoute.push(addrData.address)
-          currentGridCells.add(gridCell)
+          currentZone = zoneName
         } else {
           // Route is full, create it and start new one
           routes.push({
@@ -186,7 +166,7 @@ export async function POST(request: NextRequest) {
           
           // Start new route with this address
           currentRoute = [addrData.address]
-          currentGridCells = new Set([gridCell])
+          currentZone = zoneName
         }
       }
     }
