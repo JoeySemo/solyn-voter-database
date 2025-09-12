@@ -42,6 +42,7 @@ const createVotersTable = `
     "Voter History 3" TEXT,
     "Voter History 4" TEXT,
     "Voter History 5" TEXT,
+    canvassed BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
@@ -57,7 +58,8 @@ const createIndexes = [
   'CREATE INDEX IF NOT EXISTS idx_ward ON voters("Ward")',
   'CREATE INDEX IF NOT EXISTS idx_township ON voters("Township")',
   'CREATE INDEX IF NOT EXISTS idx_target_voter ON voters("Voted in at least 1 of the last 5 municipal elections")',
-  'CREATE INDEX IF NOT EXISTS idx_birth_year ON voters("Birth Year")'
+  'CREATE INDEX IF NOT EXISTS idx_birth_year ON voters("Birth Year")',
+  'CREATE INDEX IF NOT EXISTS idx_canvassed ON voters(canvassed)'
 ];
 
 // Initialize database
@@ -117,6 +119,9 @@ const preparedStatements = {
   // Delete voter
   deleteVoter: db.prepare('DELETE FROM voters WHERE "Voter ID" = ?'),
   
+  // Update canvassed status
+  updateCanvassedStatus: db.prepare('UPDATE voters SET canvassed = ?, updated_at = CURRENT_TIMESTAMP WHERE "Voter ID" = ?'),
+  
   // Clear all voters
   clearVoters: db.prepare('DELETE FROM voters')
 };
@@ -125,7 +130,7 @@ const preparedStatements = {
 const dbUtils = {
   // Get voters with filters and pagination
   getVoters: (params) => {
-    const { page, pageSize, search, precinct, split, ward, township, targetVoter, party } = params;
+    const { page, pageSize, search, precinct, split, ward, township, targetVoter, party, canvassed } = params;
     const offset = (page - 1) * pageSize;
     
     // Build WHERE clause dynamically
@@ -184,6 +189,12 @@ const dbUtils = {
       queryParams.push(party);
     }
     
+    if (canvassed === 'true') {
+      whereClause += ' AND canvassed = 1';
+    } else if (canvassed === 'false') {
+      whereClause += ' AND canvassed = 0';
+    }
+    
     // Get count
     const countQuery = `SELECT COUNT(*) as count FROM voters ${whereClause}`;
     const countStmt = db.prepare(countQuery);
@@ -239,6 +250,11 @@ const dbUtils = {
   // Get voter by ID
   getVoterById: (id) => {
     return preparedStatements.getVoterById.get(id);
+  },
+  
+  // Update canvassed status
+  updateCanvassedStatus: (voterId, canvassed) => {
+    return preparedStatements.updateCanvassedStatus.run(canvassed ? 1 : 0, voterId);
   },
   
   // Clear all voters

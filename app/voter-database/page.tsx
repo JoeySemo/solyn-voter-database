@@ -39,6 +39,7 @@ export default function VoterDatabasePage() {
   const [townshipFilter, setTownshipFilter] = useState('all');
   const [targetVoterFilter, setTargetVoterFilter] = useState('all');
   const [partyFilter, setPartyFilter] = useState('all');
+  const [canvassedFilter, setCanvassedFilter] = useState('all');
   const [precincts, setPrecincts] = useState<string[]>([]);
   const [splits, setSplits] = useState<string[]>([]);
   const [wards, setWards] = useState<string[]>([]);
@@ -67,6 +68,7 @@ export default function VoterDatabasePage() {
         township: townshipFilter,
         targetVoter: targetVoterFilter,
         party: partyFilter,
+        canvassed: canvassedFilter,
       });
 
       const response = await fetch(`/api/voters?${params}`);
@@ -135,7 +137,7 @@ export default function VoterDatabasePage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, precinctFilter, splitFilter, wardFilter, townshipFilter, targetVoterFilter, partyFilter]);
+  }, [searchTerm, precinctFilter, splitFilter, wardFilter, townshipFilter, targetVoterFilter, partyFilter, canvassedFilter]);
 
   useEffect(() => {
     fetchVoters();
@@ -173,6 +175,7 @@ export default function VoterDatabasePage() {
           township: townshipFilter,
           targetVoter: targetVoterFilter,
           party: partyFilter,
+          canvassed: canvassedFilter,
           assignmentMinutes
         })
       });
@@ -435,6 +438,17 @@ export default function VoterDatabasePage() {
                 ))}
               </SelectContent>
             </Select>
+
+            <Select value={canvassedFilter} onValueChange={setCanvassedFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Canvassed Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Voters</SelectItem>
+                <SelectItem value="false">Not Canvassed</SelectItem>
+                <SelectItem value="true">Canvassed</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Canvassing Controls */}
@@ -507,8 +521,8 @@ export default function VoterDatabasePage() {
           ) : (
             <div className="space-y-2">
               {voters.map((voter, index) => (
-                <Card key={`${voter["Voter ID"]}-${index}`} className="p-3">
-                  <div className="grid grid-cols-5 gap-3 items-center">
+                <Card key={`${voter["Voter ID"]}-${index}`} className={`p-3 ${voter.canvassed ? 'bg-green-50 border-green-200' : ''}`}>
+                  <div className="grid grid-cols-6 gap-3 items-center">
                     {/* Voter Information */}
                     <div className="space-y-1 text-center">
                       <div className="font-semibold text-base leading-tight">{voter["Full Name"]}</div>
@@ -547,6 +561,39 @@ export default function VoterDatabasePage() {
                         <div>4. {formatVotingHistory(voter["Voter History 4"])}</div>
                         <div>5. {formatVotingHistory(voter["Voter History 5"])}</div>
                       </div>
+                    </div>
+
+                    {/* Canvassed Status */}
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <div className="font-medium text-xs">Canvassed</div>
+                      <input
+                        type="checkbox"
+                        checked={voter.canvassed || false}
+                        onChange={async (e) => {
+                          try {
+                            const response = await fetch('/api/voters/canvassed', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                voterId: voter["Voter ID"],
+                                canvassed: e.target.checked
+                              })
+                            });
+                            
+                            if (response.ok) {
+                              // Update the local state
+                              setVoters(prev => prev.map(v => 
+                                v["Voter ID"] === voter["Voter ID"] 
+                                  ? { ...v, canvassed: e.target.checked }
+                                  : v
+                              ));
+                            }
+                          } catch (error) {
+                            console.error('Error updating canvassed status:', error);
+                          }
+                        }}
+                        className="w-5 h-5 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 focus:ring-2"
+                      />
                     </div>
                   </div>
                 </Card>
