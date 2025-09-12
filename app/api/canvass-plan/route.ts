@@ -61,59 +61,118 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not enough addresses to create a canvass plan.' }, { status: 400 })
     }
 
-    // Simple geographic clustering based on address similarity
+    // Improved geographic clustering to reduce route overlap
     const maxAddressesPerRouteActual = Math.max(2, Math.min(Number(maxAddressesPerRoute) || 12, 12))
     
-    // Group addresses by street name for better geographic clustering
-    const streetGroups = new Map<string, string[]>()
-    
-    for (const address of uniqueAddresses) {
-      // Extract street name (everything before the house number)
-      const streetMatch = address.match(/^\d+\s+(.+?)(?:\s+Dr|\s+Ct|\s+Way|\s+Ln|\s+St|\s+Ave|\s+Blvd|\s+Rd)/i)
-      if (streetMatch) {
-        const streetName = streetMatch[1].trim()
-        if (!streetGroups.has(streetName)) {
-          streetGroups.set(streetName, [])
-        }
-        streetGroups.get(streetName)!.push(address)
-      } else {
-        // Fallback for addresses that don't match the pattern
-        if (!streetGroups.has('Other')) {
-          streetGroups.set('Other', [])
-        }
-        streetGroups.get('Other')!.push(address)
+    // Parse addresses to extract geographic information
+    const addressData = uniqueAddresses.map(addr => {
+      const streetMatch = addr.match(/^(\d+)\s+(.+?)(?:\s+(?:Dr|Ct|Way|Ln|St|Ave|Blvd|Rd))/i)
+      const houseNumber = parseInt(streetMatch?.[1] || '0')
+      const streetName = streetMatch?.[2]?.trim() || 'Unknown'
+      const streetType = addr.match(/\s+(Dr|Ct|Way|Ln|St|Ave|Blvd|Rd)/i)?.[1] || ''
+      
+      return {
+        address: addr,
+        houseNumber,
+        streetName,
+        streetType,
+        fullStreet: `${streetName} ${streetType}`.trim()
       }
+    })
+    
+    // Group by full street name (including type) for better geographic separation
+    const streetGroups = new Map<string, typeof addressData>()
+    for (const addrData of addressData) {
+      if (!streetGroups.has(addrData.fullStreet)) {
+        streetGroups.set(addrData.fullStreet, [])
+      }
+      streetGroups.get(addrData.fullStreet)!.push(addrData)
     }
     
-    // Create routes by combining street groups
+    // Sort each street's addresses by house number
+    for (const [street, addresses] of streetGroups) {
+      addresses.sort((a, b) => a.houseNumber - b.houseNumber)
+    }
+    
+    // Convert to sorted array of streets with their addresses
+    let sortedStreets = Array.from(streetGroups.entries())
+      .sort((a, b) => a[0].localeCompare(b[0])) // Sort streets alphabetically for consistent ordering
+    
+    // Additional optimization: Group streets by similar names to reduce overlap
+    // This helps group streets like "Oak Street" and "Oak Avenue" together
+    const streetNameGroups = new Map<string, typeof sortedStreets>()
+    
+    for (const [fullStreet, addresses] of sortedStreets) {
+      // Extract base street name (without type and common variations)
+      const baseName = fullStreet
+        .replace(/\s+(Dr|Ct|Way|Ln|St|Ave|Blvd|Rd)$/i, '')
+        .replace(/\s+(Street|Avenue|Drive|Court|Way|Lane|Boulevard|Road)$/i, '')
+        .replace(/\s+(North|South|East|West|N|S|E|W)$/i, '')
+        .toLowerCase()
+        .trim()
+      
+      if (!streetNameGroups.has(baseName)) {
+        streetNameGroups.set(baseName, [])
+      }
+      streetNameGroups.get(baseName)!.push([fullStreet, addresses])
+    }
+    
+    // Rebuild sorted streets with grouped similar names
+    sortedStreets = []
+    for (const [baseName, streetGroup] of streetNameGroups) {
+      // Sort within each group by full street name
+      streetGroup.sort((a, b) => a[0].localeCompare(b[0]))
+      sortedStreets.push(...streetGroup)
+    }
+    
+    // Create routes with improved geographic clustering
     const routes: any[] = []
     let routeNumber = 1
     let currentRoute: string[] = []
+    let currentRouteStreets = new Set<string>()
     
-    for (const [streetName, addresses] of streetGroups) {
-      // Sort addresses by house number for better order
-      const sortedAddresses = addresses.sort((a, b) => {
-        const numA = parseInt(a.match(/^(\d+)/)?.[1] || '0')
-        const numB = parseInt(b.match(/^(\d+)/)?.[1] || '0')
-        return numA - numB
-      })
+    for (const [streetName, streetAddresses] of sortedStreets) {
+      // Check if adding this street would exceed the route limit
+      if (currentRoute.length + streetAddresses.length > maxAddressesPerRouteActual && currentRoute.length > 0) {
+        // Finalize current route
+        routes.push({
+          routeNumber: routeNumber++,
+          addresses: [...currentRoute],
+          mapsLink: `https://www.google.com/maps/dir/${currentRoute.map(encodeURIComponent).join('/')}`,
+          totalDistance: currentRoute.length * 0.1,
+          totalDuration: currentRoute.length * 2,
+          overviewPolyline: null,
+          optimizationScore: currentRoute.length,
+          efficiency: currentRoute.length
+        })
+        
+        // Start new route
+        currentRoute = []
+        currentRouteStreets.clear()
+      }
       
-      for (const address of sortedAddresses) {
-        if (currentRoute.length >= maxAddressesPerRouteActual) {
-          // Create route and start new one
+      // Add all addresses from this street to current route
+      for (const addrData of streetAddresses) {
+        if (currentRoute.length < maxAddressesPerRouteActual) {
+          currentRoute.push(addrData.address)
+          currentRouteStreets.add(streetName)
+        } else {
+          // Route is full, create it and start new one
           routes.push({
             routeNumber: routeNumber++,
             addresses: [...currentRoute],
             mapsLink: `https://www.google.com/maps/dir/${currentRoute.map(encodeURIComponent).join('/')}`,
-            totalDistance: currentRoute.length * 0.1, // Estimate 0.1 miles per address
-            totalDuration: currentRoute.length * 2, // Estimate 2 minutes per address
+            totalDistance: currentRoute.length * 0.1,
+            totalDuration: currentRoute.length * 2,
             overviewPolyline: null,
             optimizationScore: currentRoute.length,
             efficiency: currentRoute.length
           })
-          currentRoute = []
+          
+          // Start new route with this address
+          currentRoute = [addrData.address]
+          currentRouteStreets = new Set([streetName])
         }
-        currentRoute.push(address)
       }
     }
     
