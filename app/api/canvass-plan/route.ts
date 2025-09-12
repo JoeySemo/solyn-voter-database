@@ -61,79 +61,94 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not enough addresses to create a canvass plan.' }, { status: 400 })
     }
 
-    // Improved geographic clustering to reduce route overlap
+    // Alternative approach: Minimize overlap by creating compact geographic clusters
     const maxAddressesPerRouteActual = Math.max(2, Math.min(Number(maxAddressesPerRoute) || 12, 12))
     
-    // Parse addresses to extract geographic information
-    const addressData = uniqueAddresses.map(addr => {
+    // Create a grid-based clustering system
+    const gridSize = Math.ceil(Math.sqrt(uniqueAddresses.length / maxAddressesPerRouteActual))
+    
+    // Parse addresses and assign to grid cells
+    const addressData = uniqueAddresses.map((addr, index) => {
       const streetMatch = addr.match(/^(\d+)\s+(.+?)(?:\s+(?:Dr|Ct|Way|Ln|St|Ave|Blvd|Rd))/i)
       const houseNumber = parseInt(streetMatch?.[1] || '0')
       const streetName = streetMatch?.[2]?.trim() || 'Unknown'
       const streetType = addr.match(/\s+(Dr|Ct|Way|Ln|St|Ave|Blvd|Rd)/i)?.[1] || ''
+      const fullStreet = `${streetName} ${streetType}`.trim()
+      
+      // Create a hash-based grid assignment
+      const streetHash = fullStreet.toLowerCase().split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0)
+        return a & a
+      }, 0)
+      
+      // Assign to grid cell based on hash
+      const gridX = Math.abs(streetHash % gridSize)
+      const gridY = Math.abs((streetHash >> 8) % gridSize)
+      const gridCell = `${gridX},${gridY}`
       
       return {
         address: addr,
         houseNumber,
         streetName,
         streetType,
-        fullStreet: `${streetName} ${streetType}`.trim()
+        fullStreet,
+        gridCell,
+        gridX,
+        gridY,
+        streetHash,
+        index
       }
     })
     
-    // Group by full street name (including type) for better geographic separation
-    const streetGroups = new Map<string, typeof addressData>()
+    // Group addresses by grid cells
+    const gridGroups = new Map<string, typeof addressData>()
     for (const addrData of addressData) {
-      if (!streetGroups.has(addrData.fullStreet)) {
-        streetGroups.set(addrData.fullStreet, [])
+      if (!gridGroups.has(addrData.gridCell)) {
+        gridGroups.set(addrData.gridCell, [])
       }
-      streetGroups.get(addrData.fullStreet)!.push(addrData)
+      gridGroups.get(addrData.gridCell)!.push(addrData)
     }
     
-    // Sort each street's addresses by house number
-    for (const [street, addresses] of streetGroups) {
-      addresses.sort((a, b) => a.houseNumber - b.houseNumber)
+    // Sort addresses within each grid cell by street name and house number
+    for (const [cell, addresses] of gridGroups) {
+      addresses.sort((a, b) => {
+        if (a.fullStreet !== b.fullStreet) {
+          return a.fullStreet.localeCompare(b.fullStreet)
+        }
+        return a.houseNumber - b.houseNumber
+      })
     }
     
-    // Convert to sorted array of streets with their addresses
-    let sortedStreets = Array.from(streetGroups.entries())
-      .sort((a, b) => a[0].localeCompare(b[0])) // Sort streets alphabetically for consistent ordering
-    
-    // Additional optimization: Group streets by similar names to reduce overlap
-    // This helps group streets like "Oak Street" and "Oak Avenue" together
-    const streetNameGroups = new Map<string, typeof sortedStreets>()
-    
-    for (const [fullStreet, addresses] of sortedStreets) {
-      // Extract base street name (without type and common variations)
-      const baseName = fullStreet
-        .replace(/\s+(Dr|Ct|Way|Ln|St|Ave|Blvd|Rd)$/i, '')
-        .replace(/\s+(Street|Avenue|Drive|Court|Way|Lane|Boulevard|Road)$/i, '')
-        .replace(/\s+(North|South|East|West|N|S|E|W)$/i, '')
-        .toLowerCase()
-        .trim()
-      
-      if (!streetNameGroups.has(baseName)) {
-        streetNameGroups.set(baseName, [])
-      }
-      streetNameGroups.get(baseName)!.push([fullStreet, addresses])
-    }
-    
-    // Rebuild sorted streets with grouped similar names
-    sortedStreets = []
-    for (const [baseName, streetGroup] of streetNameGroups) {
-      // Sort within each group by full street name
-      streetGroup.sort((a, b) => a[0].localeCompare(b[0]))
-      sortedStreets.push(...streetGroup)
-    }
-    
-    // Create routes with improved geographic clustering
+    // Create routes by processing grid cells in a logical order
     const routes: any[] = []
     let routeNumber = 1
-    let currentRoute: string[] = []
-    let currentRouteStreets = new Set<string>()
     
-    for (const [streetName, streetAddresses] of sortedStreets) {
-      // Check if adding this street would exceed the route limit
-      if (currentRoute.length + streetAddresses.length > maxAddressesPerRouteActual && currentRoute.length > 0) {
+    // Sort grid cells by position (top-to-bottom, left-to-right)
+    const sortedGridCells = Array.from(gridGroups.entries())
+      .sort((a, b) => {
+        const [x1, y1] = a[0].split(',').map(Number)
+        const [x2, y2] = b[0].split(',').map(Number)
+        if (y1 !== y2) return y1 - y2 // Sort by row first
+        return x1 - x2 // Then by column
+      })
+    
+    // Create routes with grid-based clustering
+    let currentRoute: string[] = []
+    let currentGridCells = new Set<string>()
+    
+    for (const [gridCell, addresses] of sortedGridCells) {
+      const [gridX, gridY] = gridCell.split(',').map(Number)
+      
+      // Check if we should start a new route
+      const wouldExceedLimit = currentRoute.length + addresses.length > maxAddressesPerRouteActual
+      const tooFarFromCurrent = currentGridCells.size > 0 && 
+        Array.from(currentGridCells).some(cell => {
+          const [currX, currY] = cell.split(',').map(Number)
+          const distance = Math.abs(gridX - currX) + Math.abs(gridY - currY)
+          return distance > 1 // Only allow adjacent or same cells
+        })
+      
+      if ((wouldExceedLimit || tooFarFromCurrent) && currentRoute.length > 0) {
         // Finalize current route
         routes.push({
           routeNumber: routeNumber++,
@@ -148,14 +163,14 @@ export async function POST(request: NextRequest) {
         
         // Start new route
         currentRoute = []
-        currentRouteStreets.clear()
+        currentGridCells.clear()
       }
       
-      // Add all addresses from this street to current route
-      for (const addrData of streetAddresses) {
+      // Add addresses from this grid cell to current route
+      for (const addrData of addresses) {
         if (currentRoute.length < maxAddressesPerRouteActual) {
           currentRoute.push(addrData.address)
-          currentRouteStreets.add(streetName)
+          currentGridCells.add(gridCell)
         } else {
           // Route is full, create it and start new one
           routes.push({
@@ -171,7 +186,7 @@ export async function POST(request: NextRequest) {
           
           // Start new route with this address
           currentRoute = [addrData.address]
-          currentRouteStreets = new Set([streetName])
+          currentGridCells = new Set([gridCell])
         }
       }
     }
