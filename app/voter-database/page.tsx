@@ -521,7 +521,7 @@ export default function VoterDatabasePage() {
           ) : (
             <div className="space-y-2">
               {voters.map((voter, index) => (
-                <Card key={`${voter["Voter ID"]}-${index}`} className={`p-3 ${voter.canvassed ? 'bg-green-50 border-green-200' : ''}`}>
+                <Card key={`${voter["Voter ID"]}-${index}`} className={`p-3 ${voter.canvassed ? 'bg-yellow-50 border-yellow-200' : ''}`}>
                   <div className="grid grid-cols-6 gap-3 items-center">
                     {/* Voter Information */}
                     <div className="space-y-1 text-center">
@@ -592,7 +592,7 @@ export default function VoterDatabasePage() {
                             console.error('Error updating canvassed status:', error);
                           }
                         }}
-                        className="w-5 h-5 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 focus:ring-2"
+                        className="w-5 h-5 text-yellow-600 bg-gray-100 border-gray-300 rounded focus:ring-yellow-500 focus:ring-2"
                       />
                     </div>
                   </div>
